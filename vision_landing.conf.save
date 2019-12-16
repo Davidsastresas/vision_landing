@@ -21,7 +21,7 @@ calibration=raspicamv2-calibration-640x480.yml
 # sizemapping=12:0.5,36:0.24,85:0.11,161:0.11,166:0.11,227:0.11
 # Default mappings are for the new markers/a1-landing-april16h5.pdf
 #sizemapping=11:0.506,16:0.238,19:0.122,23:0.056 0.506
-sizemapping=11:0.6,26:0.11
+sizemapping=11:0.506,16:
 
 ## Which fiducial marker dictionary, can be any dictionary supported by aruco code.  Comment out for default ARUCO_MIP_36h12
 markerdict=TAG16h5
@@ -32,7 +32,7 @@ width=640
 ## Sets height of video image
 height=480
 ## Sets FPS of video image.  Also used as fudge value when trying to write video to file as otherwise video file can look very sped up.
-fps=30
+fps=50
 ## Set brightness of video image, useful for low light conditions.  0.5 is default, normal value.
 # brightness=0.5
 ## Verbose output, useful for debugging

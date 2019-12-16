@@ -237,8 +237,9 @@ void outgoingThread()
         int qsize = outgoingQueue.Size();
         // Read frame in from the queue and push it to stream
         if (qsize > 0) 
-        {
-            std::cout << "debug:Pushing output frame to stream:" << qsize << std::endl;
+        {   
+            // DEBUG
+            // std::cout << "debug:Pushing output frame to stream:" << qsize << std::endl;
             // If the queue already has more than 1 frame then pop it, to prevent buildup
             // We only want to send the latest frame
             while (qsize > 1)
@@ -312,7 +313,7 @@ int main(int argc, char **argv)
     }
 
     // Open camera
-    vreader.open( args::get(input) );
+    vreader.open(200);
 
     // Bail if camera can't be opened
     if (!vreader.isOpened())
@@ -478,9 +479,9 @@ int main(int argc, char **argv)
         // If tracking not active, skip
         if (!stateflag)
         {
-            // Add a 1ms sleep to slow down the loop if nothing else is being done
-            nanosleep((const struct timespec[]){{0, 10000000L}}, NULL);
-            continue;
+             // Add a 1ms sleep to slow down the loop if nothing else is being done
+             nanosleep((const struct timespec[]){{0, 10000000L}}, NULL);
+             continue;
         }
 
         // Start Timers
@@ -687,6 +688,7 @@ int main(int argc, char **argv)
         else if (output && args::get(output) == "window")
         {
             imshow("vision_landing", iframe.mat);
+            cv::waitKey(1);
             Timer.add("OutputImage");
         }
 

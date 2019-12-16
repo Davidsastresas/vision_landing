@@ -2,7 +2,7 @@
 Description=Vision Landing System
 
 [Service]
-ExecStart=/usr/local/vision_landing/vision_landing
+ExecStart=~/vision_landing/vision_landing
 TimeoutStartSec=0
 
 [Install]
