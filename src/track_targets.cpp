@@ -43,6 +43,7 @@ using namespace aruco;
 // Setup sig handling
 static volatile sig_atomic_t sigflag = 0;
 static volatile sig_atomic_t stateflag = 0; // 0 = stopped, 1 = started
+
 void handle_sig(int sig)
 {
     std::cout << "info:SIGNAL:" << sig << ":Received" << std::endl;
@@ -87,8 +88,27 @@ double avgfps()
     return _avgfps;
 }
 
+int32_t get_angle(Marker m)
+{
+    int32_t angle = 57.29f*atan2((m[2].y-m[1].y),(m[2].x-m[1].x));
+    return angle;
+}
+
+int32_t get_angle_err90(int32_t ang)
+{
+    uint32_t val = abs(ang);
+    return val;
+}
+
+bool Big_lock = false;
+
+Scalar Blue=Scalar(255, 0, 0, 255);
+Scalar Green=Scalar(0, 255, 0, 255);
+Scalar Red=Scalar(0, 0, 255, 255);
+
+
 // Define function to draw AR landing marker
-void drawARLandingCube(cv::Mat &Image, Marker &m, const CameraParameters &CP)
+void drawARLandingCube(cv::Mat &Image, Marker &m, const CameraParameters &CP, Scalar color, int thickness)
 {
     Mat objectPoints(8, 3, CV_32FC1);
     double halfSize = m.ssize / 2;
@@ -123,13 +143,13 @@ void drawARLandingCube(cv::Mat &Image, Marker &m, const CameraParameters &CP)
     cv::projectPoints(objectPoints, m.Rvec, m.Tvec, CP.CameraMatrix, CP.Distorsion, imagePoints);
     // draw lines of different colours
     for (int i = 0; i < 4; i++)
-        cv::line(Image, imagePoints[i], imagePoints[(i + 1) % 4], Scalar(0, 255, 0, 255), 1, cv::LINE_AA);
+        cv::line(Image, imagePoints[i], imagePoints[(i + 1) % 4], color, thickness, cv::LINE_AA);
 
     for (int i = 0; i < 4; i++)
-        cv::line(Image, imagePoints[i + 4], imagePoints[4 + (i + 1) % 4], Scalar(0, 255, 0, 255), 1, cv::LINE_AA);
+        cv::line(Image, imagePoints[i + 4], imagePoints[4 + (i + 1) % 4], color, thickness, cv::LINE_AA);
 
     for (int i = 0; i < 4; i++)
-        cv::line(Image, imagePoints[i], imagePoints[i + 4], Scalar(0, 255, 0, 255), 1, cv::LINE_AA);
+        cv::line(Image, imagePoints[i], imagePoints[i + 4], color, thickness, cv::LINE_AA);
 }
 
 // Print the calculated distance at bottom of image
@@ -268,12 +288,18 @@ int main(int argc, char **argv)
     args::ArgumentParser parser("Track fiducial markers and estimate pose, output translation vectors for vision_landing");
     args::HelpFlag help(parser, "help", "Display this help menu", {'h', "help"});
     args::Flag verbose(parser, "verbose", "Verbose", {'v', "verbose"});
-    args::ValueFlag<int> markerid(parser, "markerid", "Marker ID", {'i', "id"});
+    args::Flag markerdebug(parser, "markerdebug", "markerdebug", {'p', "markerdebug"});
+    args::Flag autosize(parser, "autosize", "run or not autosizing optimizer", {'a', "autosize"});
+    args::ValueFlag<int> markerid(parser, "markerid", "Marker ID of the big marker", {'i', "id"});
     args::ValueFlag<std::string> dict(parser, "dict", "Marker Dictionary", {'d', "dict"});
     args::ValueFlag<std::string> output(parser, "output", "Output Stream", {'o', "output"});
     args::ValueFlag<int> width(parser, "width", "Video Input Resolution - Width", {'w', "width"});
     args::ValueFlag<int> height(parser, "height", "Video Input Resolution - Height", {'g', "height"});
     args::ValueFlag<int> fps(parser, "fps", "Video Output FPS - Kludge factor", {'f', "fps"});
+    args::ValueFlag<int> arucothreshold(parser, "arucothreshold", "threshold value for aruco detector. 5-18 aprox", {'t', "art"});
+    args::ValueFlag<int> trackererr(parser, "trackererr", "error for initializing the aruco tracker 1-10", {'e', "trackerr"});
+    args::ValueFlag<int> anglerange(parser, "anglerange", "angle for considering good to do marker lock", {'r', "anglerange"});
+    args::ValueFlag<int> anglemax(parser, "anglemax", "max angle for ditching current marker lock", {'s', "anglemax"});
     args::ValueFlag<double> brightness(parser, "brightness", "Camera Brightness/Gain", {'b', "brightness"});
     args::ValueFlag<std::string> sizemapping(parser, "sizemapping", "Marker Size Mappings, in marker_id:size format, comma separated", {'z', "sizemapping"});
     args::ValueFlag<int> markerhistory(parser, "markerhistory", "Marker tracking history, in frames", {"markerhistory"});
@@ -306,7 +332,7 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    if (!input || !calibration || !markersize)
+    if (!input || !calibration )
     {
         std::cout << parser;
         return 1;
@@ -399,11 +425,26 @@ int main(int argc, char **argv)
     MatCapsule oframe;
 
     // Setup the marker detection
-    double MarkerSize = args::get(markersize);
+    double MarkerSize;
+    if (args::get(markersize))
+    {
+        MarkerSize = args::get(markersize);
+    }
+    else
+    {
+        MarkerSize = 0.4;
+    }
+
     MarkerDetector MDetector;
     MarkerDetector::Params &MParams = MDetector.getParameters();
     MDetector.setDetectionMode(aruco::DM_VIDEO_FAST, 0.02);
-    MParams.setAutoSizeSpeedUp(true,0.3);
+
+    if (arucothreshold) {
+        MDetector.getParameters().ThresHold = args::get(arucothreshold);
+    }
+    if (!autosize) {
+        MParams.setAutoSizeSpeedUp(false);
+    }
     MParams.maxThreads = 1; // -1 = all
     MParams.setCornerRefinementMethod(aruco::CORNER_SUBPIX);
     MParams.NAttemptsAutoThresFix = 3; // This is the number of random threshold iterations when no markers found
@@ -411,6 +452,24 @@ int main(int argc, char **argv)
     // Tracking variables
     float Ti = MParams.minSize;
     int ThresHold = MParams.ThresHold;
+
+    float tracker_error = 10;
+    if (trackererr){
+        tracker_error = args::get(trackererr);
+    }
+
+    int angle_range = 27;
+    if (anglerange) {
+        angle_range = args::get(anglerange);
+    }
+    int big_marker_id = 11;
+    if (markerid) {
+        big_marker_id = args::get(markerid);
+    }
+    int angle_max = 40;
+    if (anglemax) {
+        angle_max = args::get(anglemax);
+    }
 
     std::map<uint32_t, MarkerPoseTracker> MTracker; // use a map so that for each id, we use a different pose tracker
     if (dict)
@@ -462,6 +521,7 @@ int main(int argc, char **argv)
     uint32_t marker_threshold;
     marker_threshold = args::get(markerthreshold);
     std::cout << "debug:Marker Threshold:" << marker_threshold << std::endl;
+    float _histthresh = marker_history * ((float)marker_threshold / (float)100);
 
     // Print a specific info message to signify end of initialisation
     std::cout << "info:initcomp:Initialisation Complete" << std::endl;
@@ -476,7 +536,7 @@ int main(int argc, char **argv)
             break;
         }
 
-        // If tracking not active, skip
+        //If tracking not active, skip
         if (!stateflag)
         {
              // Add a 1ms sleep to slow down the loop if nothing else is being done
@@ -510,13 +570,16 @@ int main(int argc, char **argv)
         std::vector<Marker> Markers = MDetector.detect(iframe.mat);
         Timer.add("MarkerDetect");
 
-        // Order the markers in ascending size - we want to start with the smallest.
+        // Order the markers in ascending size - we want to start with the smallest. Also map in ascending size marker angles, for starting with the most aligned.
         std::map<float, uint32_t> markerAreas;
         std::map<uint32_t, bool> markerIds;
+        std::map<uint32_t, uint32_t> markerAngles;
+
         for (auto &marker : Markers)
         {
             markerAreas[marker.getArea()] = marker.id;
             markerIds[marker.id] = true;
+            markerAngles[get_angle_err90(get_angle(marker))] = marker.id;
             // If the marker doesn't already exist in the threshold tracking, add and populate with full set of zeros
             if (marker_history_queue.count(marker.id) == 0)
             {
@@ -537,26 +600,58 @@ int main(int argc, char **argv)
             }
         }
 
-        // If marker is set in config, use that to lock on
-        if (markerid)
-        {
-            active_marker = args::get(markerid);
-            // Otherwise find the smallest marker that has a size mapping
-        }
-        else
-        {
-            for (auto &markerArea : markerAreas)
+            // for (auto &markerArea : markerAreas)
+            // {
+            //     // std::cout << "ang:" << markerAng.first << "      ID:" << markerAng.second << endl;
+            //     uint32_t thisId = markerArea.second;
+            //     if (markerSizes[thisId])
+            //     {
+            //         // If the current history for this marker is >threshold, then set as the active marker and clear marker histories.  Otherwise, skip to the next sized marker.
+            //         uint32_t _histsum = markerHistory(marker_history_queue, thisId, marker_history);
+            //         if (_histsum > _histthresh)
+            //         {
+            //             if (active_marker == thisId)
+            //                 break; // Don't change to the same thing
+            //             changeActiveMarker(marker_history_queue, active_marker, thisId, marker_history);
+            //             if (verbose)
+            //             {
+            //                 std::cout << "debug:changing active_marker:" << thisId << ":" << _histsum << ":" << _histthresh << ":" << std::endl;
+            //                 std::cout << "debug:marker history:";
+            //                 for (auto &markerhist : marker_history_queue)
+            //                 {
+            //                     std::cout << markerhist.first << ":" << markerHistory(marker_history_queue, markerhist.first, marker_history) << ":";
+            //                 }
+            //                 std::cout << std::endl;
+            //             }
+            //             break;
+            //         }
+            //     }
+            // }
+
+        for (auto &markerAngle : markerAngles)
             {
-                uint32_t thisId = markerArea.second;
+                // std::cout << "ang:" << markerAng.first << "      ID:" << markerAng.second << endl;
+                uint32_t thisId = markerAngle.second;
                 if (markerSizes[thisId])
                 {
+                    if (active_marker == thisId && active_marker != big_marker_id) {
+                            if (markerAngle.first > angle_max) {
+                                active_marker = 0;
+                                continue;
+                            }
+                    }
+                    if (markerAngle.second != big_marker_id) {
+                            if (markerAngle.first > angle_range) {
+                                continue;
+                            }
+                    }
                     // If the current history for this marker is >threshold, then set as the active marker and clear marker histories.  Otherwise, skip to the next sized marker.
                     uint32_t _histsum = markerHistory(marker_history_queue, thisId, marker_history);
-                    float _histthresh = marker_history * ((float)marker_threshold / (float)100);
                     if (_histsum > _histthresh)
                     {
-                        if (active_marker == thisId)
-                            break; // Don't change to the same thing
+                        if (active_marker == thisId) {
+                                break; // Don't change to the same thing
+                        }
                         changeActiveMarker(marker_history_queue, active_marker, thisId, marker_history);
                         if (verbose)
                         {
@@ -572,32 +667,17 @@ int main(int argc, char **argv)
                     }
                 }
             }
-        }
-        // If a marker lock hasn't been found by this point, use the smallest found marker with the default marker size
-        if (!active_marker)
-        {
-            for (auto &markerArea : markerAreas)
-            {
-                uint32_t thisId = markerArea.second;
-                // If the history threshold for this marker is >50%, then set as the active marker and clear marker histories.  Otherwise, skip to the next sized marker.
-                uint32_t _histsum = markerHistory(marker_history_queue, thisId, marker_history);
-                float _histthresh = marker_history * ((float)marker_threshold / (float)100);
-                if (_histsum > _histthresh)
-                {
-                    if (verbose)
-                        std::cout << "debug:changing active_marker:" << thisId << std::endl;
-                    changeActiveMarker(marker_history_queue, active_marker, thisId, marker_history);
-                    break;
-                }
-            }
-        }
+            
         Timer.add("MarkerLock");
 
         // Iterate through the markers, in order of size, and do pose estimation
         for (auto &markerArea : markerAreas)
         {
-            if (markerArea.second != active_marker)
-                continue; // Don't do pose estimation if not active marker, save cpu cycles
+            if (!markerdebug) {
+                if (markerArea.second != active_marker) {
+                    continue; // Don't do pose estimation if not active marker, save cpu cycles
+                }
+            }
             float _size;
             // If marker size mapping exists for this marker, use it for pose estimation
             if (markerSizes[markerArea.second])
@@ -610,13 +690,15 @@ int main(int argc, char **argv)
                 _size = MarkerSize;
                 if (verbose)
                     std::cout << "debug:defaulting to generic marker size: " << markerArea.second << std::endl;
+            } else {
+                continue;
             }
             // Find the Marker in the Markers map and do pose estimation.  I'm sure there's a better way of iterating through the map..
             for (unsigned int i = 0; i < Markers.size(); i++)
             {
                 if (Markers[i].id == markerArea.second)
                 {
-                    MTracker[markerArea.second].estimatePose(Markers[i], CamParam, _size);
+                    MTracker[markerArea.second].estimatePose(Markers[i], CamParam, _size, tracker_error);
                 }
             }
         }
@@ -626,16 +708,16 @@ int main(int argc, char **argv)
         for (unsigned int i = 0; i < Markers.size(); i++)
         {
             double processtime = CLOCK() - framestart;
+
             // If marker id matches current active marker, draw a green AR cube
-            if (Markers[i].id == active_marker)
-            {
-                if (output)
-                {
-                    Markers[i].draw(iframe.mat, Scalar(0, 255, 0), 2, false);
+            if (Markers[i].id == active_marker) {
+
+                if (output) {
+                    Markers[i].draw(iframe.mat, Green, 2, false);
                 }
+
                 // If pose estimation was successful, calculate data and output to anyone listening.
-                if (Markers[i].Tvec.at<float>(0, 2) > 0)
-                {
+                if (Markers[i].Tvec.at<float>(0, 2) > 0) {
                     // Calculate vector norm for distance
                     double distance = sqrt(pow(Markers[i].Tvec.at<float>(0, 0), 2) + pow(Markers[i].Tvec.at<float>(0, 1), 2) + pow(Markers[i].Tvec.at<float>(0, 2), 2));
                     // Calculate angular offsets in radians of center of detected marker
@@ -653,24 +735,32 @@ int main(int argc, char **argv)
                     std::fflush(stdout); // explicitly flush stdout buffer
                     Timer.add("SendMessage");
                     // Draw AR cube and distance
-                    if (output)
-                    { // don't burn cpu cycles if no output
-                        drawARLandingCube(iframe.mat, Markers[i], CamParam);
+                    if (output) { // don't burn cpu cycles if no output
+                        drawARLandingCube(iframe.mat, Markers[i], CamParam, Green, 2);
                         CvDrawingUtils::draw3dAxis(iframe.mat, Markers[i], CamParam);
-                        drawVectors(iframe.mat, Scalar(0, 255, 0), 1, (i + 1) * 20, Markers[i].id, xoffset, yoffset, distance, Markers[i].getCenter().x, Markers[i].getCenter().y);
+                        drawVectors(iframe.mat, Green, 1, (i + 1) * 20, Markers[i].id, xoffset, yoffset, distance, Markers[i].getCenter().x, Markers[i].getCenter().y);
                         Timer.add("DrawGreenAR");
                     }
                 }
-                // Otherwise draw a red square
-            }
-            else
-            {
-                if (verbose)
+            // Otherwise draw a red square
+            } else {
+
+                if (verbose) {
                     std::cout << "debug:inactive_marker:center~" << Markers[i].getCenter() << ":area~" << Markers[i].getArea() << ":marker~" << Markers[i] << ":Ti~" << Ti << ":ThresHold~" << ThresHold << ":Markers~" << Markers.size() << ":processtime~" << processtime << std::endl;
-                if (output)
-                { // don't burn cpu cycles if no output
-                    Markers[i].draw(iframe.mat, Scalar(0, 0, 255), 2, false);
-                    drawVectors(iframe.mat, Scalar(0, 0, 255), 1, (i + 1) * 20, Markers[i].id, 0, 0, Markers[i].Tvec.at<float>(0, 2), Markers[i].getCenter().x, Markers[i].getCenter().y);
+                }
+
+                if (output) { // don't burn cpu cycles if no output
+                    drawVectors(iframe.mat, Red, 1, (i + 1) * 20, Markers[i].id, 0, 0, Markers[i].Tvec.at<float>(0, 2), Markers[i].getCenter().x, Markers[i].getCenter().y);
+                    if (markerdebug) {
+                        if (Markers[i].Tvec.at<float>(0, 2) > 0) {
+                            Markers[i].draw(iframe.mat, Blue, 2, false);
+                            drawARLandingCube(iframe.mat, Markers[i], CamParam, Blue, 1);
+                        } else {
+                            Markers[i].draw(iframe.mat, Red, 2, false);
+                        }
+                    } else {
+                        Markers[i].draw(iframe.mat, Red, 2, false);
+                    }
                     Timer.add("DrawRedAR");
                 }
             }

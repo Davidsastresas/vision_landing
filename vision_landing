@@ -189,7 +189,7 @@ class TrackTargets:
             self.track_arguments.extend(['-o', args_output])
         # If marker id is set, pass it through
         if args.markerid:
-            self.track_arguments.extend(['-i', args.markerid])
+            self.track_arguments.extend(['-i', str(args.markerid)])
         # If width is set, pass it through
         if args.width:
             self.track_arguments.extend(['-w', str(args.width)])
@@ -202,6 +202,21 @@ class TrackTargets:
         # If verbose is set, pass it through
         if args.verbose:
             self.track_arguments.extend(['-v'])
+        # If markerdebug is set, pass it through
+        if args.markerdebug:
+            self.track_arguments.extend(['-p'])
+        # If autosize is set, pass it through
+        if args.autosize:
+            self.track_arguments.extend(['-a'])
+        # If pose error is set, pass it through
+        if args.trackererr:
+            self.track_arguments.extend(['-e', str(args.trackererr)])
+        # If anglerange error is set, pass it through
+        if args.anglerange:
+            self.track_arguments.extend(['-r', str(args.anglerange)])
+        # If anglemax error is set, pass it through
+        if args.anglemax:
+            self.track_arguments.extend(['-s', str(args.anglemax)])
         # If brightness is set, pass it through
         if args.brightness:
             self.track_arguments.extend(['-b', str(args.brightness)])
@@ -448,6 +463,11 @@ parser.add_argument('--markersize', help="Target marker size, in meters, require
 parser.add_argument('--sizemapping', '-z', help="Marker Size Mappings, in marker_id:size format, comma separated")
 parser.add_argument('--markerhistory', help="Marker tracking history, in frames, defaults to 15")
 parser.add_argument('--markerthreshold', help="Marker tracking threshold, in percentage, defaults to 50")
+parser.add_argument('--markerdebug', help="show AR cube for all markers, not only active")
+parser.add_argument('--autosize', help="Optimizer. Set to false for debugging purposes, as True may not detect all markers on sight.")
+parser.add_argument('--trackererr', help="error for initialization of pose in aruco tracker")
+parser.add_argument('--anglerange', help="angle for considering good to lock into marker")
+parser.add_argument('--anglemax', help="angle bigger than this will ditch current marker lock")
 parser.add_argument('--calibration', help="camera calibration data, required")
 parser.add_argument('--input', '-i', default="/dev/video0", help="camera input, defaults to /dev/video0")
 parser.add_argument('--output', '-o', help="gstreamer output pipeline, defaults to none")
