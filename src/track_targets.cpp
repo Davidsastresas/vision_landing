@@ -600,43 +600,14 @@ int main(int argc, char **argv)
             }
         }
 
-            // for (auto &markerArea : markerAreas)
-            // {
-            //     // std::cout << "ang:" << markerAng.first << "      ID:" << markerAng.second << endl;
-            //     uint32_t thisId = markerArea.second;
-            //     if (markerSizes[thisId])
-            //     {
-            //         // If the current history for this marker is >threshold, then set as the active marker and clear marker histories.  Otherwise, skip to the next sized marker.
-            //         uint32_t _histsum = markerHistory(marker_history_queue, thisId, marker_history);
-            //         if (_histsum > _histthresh)
-            //         {
-            //             if (active_marker == thisId)
-            //                 break; // Don't change to the same thing
-            //             changeActiveMarker(marker_history_queue, active_marker, thisId, marker_history);
-            //             if (verbose)
-            //             {
-            //                 std::cout << "debug:changing active_marker:" << thisId << ":" << _histsum << ":" << _histthresh << ":" << std::endl;
-            //                 std::cout << "debug:marker history:";
-            //                 for (auto &markerhist : marker_history_queue)
-            //                 {
-            //                     std::cout << markerhist.first << ":" << markerHistory(marker_history_queue, markerhist.first, marker_history) << ":";
-            //                 }
-            //                 std::cout << std::endl;
-            //             }
-            //             break;
-            //         }
-            //     }
-            // }
-
         for (auto &markerAngle : markerAngles)
             {
-                // std::cout << "ang:" << markerAng.first << "      ID:" << markerAng.second << endl;
                 uint32_t thisId = markerAngle.second;
                 if (markerSizes[thisId])
                 {
                     if (active_marker == thisId && active_marker != big_marker_id) {
                             if (markerAngle.first > angle_max) {
-                                active_marker = 0;
+                                changeActiveMarker(marker_history_queue, active_marker, 0, marker_history);
                                 continue;
                             }
                     }
