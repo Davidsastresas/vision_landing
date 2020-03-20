@@ -457,7 +457,8 @@ nowtime = now.strftime("%Y-%m-%d-%H-%M-%S")
 import argparse
 import ConfigParser
 parser = argparse.ArgumentParser(description='Vision based precision landing')
-parser.add_argument('--config', '-c', default=cwd+"/vision_landing.conf", help="config file location, defaults to same directory as vision_landing")
+# parser.add_argument('--config', '-c', default=cwd+"/vision_landing.conf", help="config file location, defaults to same directory as vision_landing")
+parser.add_argument('--config', '-c', default="/boot/vision_landing.conf", help="config file location, defaults to same directory as vision_landing")
 parser.add_argument('--connect', help="dronekit vehicle connection target string, eg. /dev/ttyS0, tcp:localhost:5770, udp:localhost:14560")
 parser.add_argument('--markersize', help="Target marker size, in meters, required")
 parser.add_argument('--sizemapping', '-z', help="Marker Size Mappings, in marker_id:size format, comma separated")
@@ -713,13 +714,21 @@ while True:
     # Update timesync
     tracktime.update()
 
-    # If craft mode has changed, take action
-    if (args.controlprocessing and (craft.vehicle.armed and (craft.vehicle.mode == "LAND" or (craft.vehicle.mode == "LOITER" and (craft.precloiter_opt and craft.vehicle.channels[str(craft.precloiter_opt)] > 1800))))) and track_targets.state == "initialised":
+    # If craft mode has changed, take action. 19, 20 and 21 corresponds to qloiter qland and qrtl
+    if (args.controlprocessing and (craft.vehicle.armed and (craft.vehicle.mode == "QLAND" or (craft.vehicle.mode == "QLOITER" and (craft.precloiter_opt and craft.vehicle.channels[str(craft.precloiter_opt)] > 1800))))) and track_targets.state == "initialised":
         track_targets.start()
-    elif (args.controlprocessing and (not craft.vehicle.armed or (craft.vehicle.mode != "LAND" and (craft.vehicle.mode != "LOITER" and (craft.precloiter_opt and craft.vehicle.channels[str(craft.precloiter_opt)] <= 1800))))) and track_targets.state == "started":
+    elif (args.controlprocessing and (not craft.vehicle.armed or (craft.vehicle.mode != "QLAND" and (craft.vehicle.mode != "QLOITER" and (craft.precloiter_opt and craft.vehicle.channels[str(craft.precloiter_opt)] <= 1800))))) and track_targets.state == "started":
         track_targets.stop()
     elif not args.controlprocessing and track_targets.state == "initialised":
         track_targets.start()
+
+    # if (args.controlprocessing and (craft.vehicle.armed and (craft.vehicle.mode == "QLAND" or craft.vehicle.mode == "QRTL" (craft.vehicle.mode == "QLOITER" and (craft.precloiter_opt and craft.vehicle.channels[str(craft.precloiter_opt)] > 1800))))) and track_targets.state == "initialised":
+    #     track_targets.start()
+    # elif (args.controlprocessing and (not craft.vehicle.armed or (craft.vehicle.mode != "QLAND" or craft.vehicle.mode != "QRTL" and (craft.vehicle.mode != "QLOITER" and (craft.precloiter_opt and craft.vehicle.channels[str(craft.precloiter_opt)] <= 1800))))) and track_targets.state == "started":
+    #     track_targets.stop()
+    # elif not args.controlprocessing and track_targets.state == "initialised":
+    #     track_targets.start()
+
 
     # See if there are any tracking results in the queue
     #log.debug("Main loop: Before readline: {:.0f}".format(monotonic_time()))
