@@ -526,6 +526,9 @@ int main(int argc, char **argv)
     // Print a specific info message to signify end of initialisation
     std::cout << "info:initcomp:Initialisation Complete" << std::endl;
 
+    namedWindow("vision_landing", WINDOW_NORMAL);
+    setWindowProperty("vision_landing", WND_PROP_FULLSCREEN, WINDOW_FULLSCREEN);
+
     // Main loop
     while (true)
     {

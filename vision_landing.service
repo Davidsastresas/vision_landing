@@ -2,7 +2,9 @@
 Description=Vision Landing System
 
 [Service]
-ExecStart=~/vision_landing/vision_landing
+Environment=XAUTHORITY=/home/pi/.Xauthority
+Environment=DISPLAY=:0.0
+ExecStart=/home/pi/vision_landing/vision_landing
 TimeoutStartSec=0
 
 [Install]
